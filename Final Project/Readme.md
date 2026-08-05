@@ -1,2 +1,2 @@
 # ELC5319 Final Project
-Massively Parallel Programming Final Project Repository
+Massively Parallel Programming Final Project Respository
