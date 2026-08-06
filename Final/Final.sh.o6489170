@@ -1,0 +1,10 @@
+gpu011
+
+Setting up the problem...0.000048 s
+    Input size = 70
+Allocating device variables...0.168494 s
+Copying data from host to device...0.000044 s
+Launching kernel...0.041302 s
+Copying data from device to host...0.000018 s
+Verifying results...Max error: 1684.526
+
