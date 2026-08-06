@@ -23,38 +23,38 @@ int main(int argc, char* argv[])
 
 	float *in_h, *out_h;
 	float *in_d, *out_d;
-	unsigned num_elements;
+    unsigned size;
 	cudaError_t cuda_ret;
 
 	/* Allocate and initialize input vector */
     if(argc == 1) {
-        num_elements = 1000000;
+        size = 70;
     } else if(argc == 2) {
-        num_elements = atoi(argv[1]);
+        size = atoi(argv[1]);
     } else {
         printf("\n    Invalid input parameters!"
-           "\n    Usage: ./prefix-scan        # Input of size 1,000,000 is used"
-           "\n    Usage: ./prefix-scan <m>    # Input of size m is used"
+           "\n    Usage: ./Final        # Input of size 70 is used"
+           "\n    Usage: ./Final <m>    # Input of size m x m is used"
            "\n");
         exit(0);
     }
-    initVector(&in_h, num_elements);
+    initMatrix(&in_h, size);
 
 	/* Allocate and initialize output vector */
-	out_h = (float*)calloc(num_elements, sizeof(float));
+	out_h = (float*)calloc(size*size, sizeof(float));
 	if(out_h == NULL) FATAL("Unable to allocate host");
 
     stopTime(&timer); printf("%f s\n", elapsedTime(timer));
-    printf("    Input size = %u\n", num_elements);
+    printf("    Input size = %u\n", size);
 
     // Allocate device variables ----------------------------------------------
 
     printf("Allocating device variables..."); fflush(stdout);
     startTime(&timer);
 
-	cuda_ret = cudaMalloc((void**)&in_d, num_elements*sizeof(float));
+	cuda_ret = cudaMalloc((void**)&in_d, size*size*sizeof(float));
 	if(cuda_ret != cudaSuccess) FATAL("Unable to allocate device memory");
-	cuda_ret = cudaMalloc((void**)&out_d, num_elements*sizeof(float));
+	cuda_ret = cudaMalloc((void**)&out_d, size*size*sizeof(float));
 	if(cuda_ret != cudaSuccess) FATAL("Unable to allocate device memory");
 
     cudaDeviceSynchronize();
@@ -65,11 +65,11 @@ int main(int argc, char* argv[])
     printf("Copying data from host to device..."); fflush(stdout);
     startTime(&timer);
 
-    cuda_ret = cudaMemcpy(in_d, in_h, num_elements*sizeof(float),
+    cuda_ret = cudaMemcpy(in_d, in_h, size*size*sizeof(float),
         cudaMemcpyHostToDevice);
 	if(cuda_ret != cudaSuccess) FATAL("Unable to copy memory to the device");
 
-	cuda_ret = cudaMemset(out_d, 0, num_elements*sizeof(float));
+	cuda_ret = cudaMemset(out_d, 0, size*size*sizeof(float));
 	if(cuda_ret != cudaSuccess) FATAL("Unable to set device memory");
 
     cudaDeviceSynchronize();
@@ -79,7 +79,7 @@ int main(int argc, char* argv[])
     printf("Launching kernel..."); fflush(stdout);
     startTime(&timer);
 
-    preScan(out_d, in_d, num_elements);
+    luFactorization(out_d, in_d, size);
     
     //gpuErrChk(cudaDeviceSynchronize());
 	cuda_ret = cudaDeviceSynchronize();
@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
     printf("Copying data from device to host..."); fflush(stdout);
     startTime(&timer);
 
-    cuda_ret = cudaMemcpy(out_h, out_d, num_elements*sizeof(float),
+    cuda_ret = cudaMemcpy(out_h, out_d, size*size*sizeof(float),
         cudaMemcpyDeviceToHost);
     if(cuda_ret != cudaSuccess) FATAL("Unable to copy memory to host");
 
@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
 
     printf("Verifying results..."); fflush(stdout);
 
-    verify(in_h, out_h, num_elements);
+    verify(in_h, out_h, size);
 
     // Free memory ------------------------------------------------------------
 

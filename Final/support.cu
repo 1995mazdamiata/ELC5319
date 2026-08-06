@@ -11,38 +11,51 @@
 
 #include "support.h"
 
-void initVector(float **vec_h, unsigned size)
+void initMatrix(float **mat_h, unsigned size)
 {
-    *vec_h = (float*)malloc(size*sizeof(float));
+    *mat_h = (float*)malloc(size*size*sizeof(float));
 
-    if(*vec_h == NULL) {
+    if(*mat_h == NULL) {
         FATAL("Unable to allocate host");
     }
 
-    for (unsigned int i=0; i < size; i++) {
-        (*vec_h)[i] = (rand()%100)/100.00;
-    }
+    for (unsigned int i = 0; i < size; ++i) {
+        float rowsum = 0.0f;
 
+        for (unsigned int j = 0; j < size; ++j) {
+            float v = (float)(rand() % 1000)/100.0f - 5.0f;
+            (*mat_h)[i*size + j] = v;
+
+            if (i != j) rowsum += fabs(v);
+        }
+
+        (*mat_h)[i*size + i] = (float)(rowsum + 10.0); //ensure diagonals are strong
+    }
 }
 
+// reconstruct L*U = A and compare to A 
+void verify(float* input, float* output, unsigned size) {
 
-void verify(float* input, float* output, unsigned num_elements) {
+  const double relativeTolerance = 2e-5;
 
-  const float relativeTolerance = 2e-5;
+  for (int i = 0; i < size; ++i) {
+    for (int j = 0; j < size; ++j) {
+        double sum = 0.0;
+        int kmax = (i < j) ? i : j;
+        for(int t = 0; t <= kmax; ++t) {
+            double l = (t == i) ? 1.0 : (double)output[i*size + t];
+            double u = (double)output[t*size + j];
+            sum += l*u;
+        }
 
-  //float sum = 0.0f;
-  double sum = 0.0;
-  for(int i = 0; i < num_elements; ++i) {
-    float relativeError = (sum - output[i])/sum;
-    if (relativeError > relativeTolerance
-      || relativeError < -relativeTolerance) {
-      printf("TEST FAILED at i = %d, cpu = %0.3f, gpu = %0.3f\n\n", i, sum, output[i]);
-      exit(0);
+        double relErr = fabs(sum - (double)input[i*size + j])/sum;
+        if(relErr > relativeTolerance) {
+            printf("TEST FAILED at i = %d, j = %d, cpu = %0.3f, gpu = %0.3f\n\n", i, j, input[i*size  + j], sum);
+            exit(0);
+        }
     }
-    sum += input[i];
   }
   printf("TEST PASSED\n\n");
-
 }
 
 void startTime(Timer* timer) {

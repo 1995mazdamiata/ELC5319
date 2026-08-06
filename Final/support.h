@@ -19,8 +19,8 @@ typedef struct {
 #ifdef __cplusplus
 extern "C" {
 #endif
-void initVector(float **vec_h, unsigned size);
-void verify(float* input, float* output, unsigned num_elements);
+void initMatrix(float **mat_h, unsigned size);
+void verify(float* input, float* output, unsigned size);
 void startTime(Timer* timer);
 void stopTime(Timer* timer);
 float elapsedTime(Timer timer);
