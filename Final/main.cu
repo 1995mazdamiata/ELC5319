@@ -9,13 +9,13 @@
 #include <stdio.h>
 
 #include "support.h"
+#include "kernel_V1.cu"
 #include "kernel_V2.cu"
 #include "kernel_V3.cu"
 
 int main(int argc, char* argv[])
 {
     Timer timer;
-    srand(time(NULL));
 
     // Initialize host variables ----------------------------------------------
 
@@ -25,17 +25,24 @@ int main(int argc, char* argv[])
 	float *in_h, *out_h;
 	float *in_d, *out_d;
     unsigned size;
+    unsigned version;
 	cudaError_t cuda_ret;
 
 	/* Allocate and initialize input vector */
     if(argc == 1) {
         size = 70;
+        version = 1;
     } else if(argc == 2) {
         size = atoi(argv[1]);
+        version = 1;
+    } else if (argc == 3) {
+        size = atoi(argv[1]);
+        version = atoi(argv[2]);
     } else {
         printf("\n    Invalid input parameters!"
-           "\n    Usage: ./Final        # Input of size 70 is used"
-           "\n    Usage: ./Final <m>    # Input of size m x m is used"
+           "\n    Usage: ./Final         # Input of size 70 is used"
+           "\n    Usage: ./Final <m>     # Input of size m x m is used"
+           "\n    Usage: ./Final <m> <v> # Input of size m x m, kernel version v"
            "\n");
         exit(0);
     }
@@ -77,11 +84,29 @@ int main(int argc, char* argv[])
     stopTime(&timer); printf("%f s\n", elapsedTime(timer));
 
     // Launch kernel ----------------------------------------------------------
-    printf("Launching kernel..."); fflush(stdout);
+    printf("Launching kernel "); fflush(stdout);
     startTime(&timer);
 
-    luFactorization_V2(out_d, in_d, size);
-    //luFactorization_V3(out_d, in_d, size);
+    switch (version) {
+        case 1:
+            printf("V%d...", version);
+            luFactorization_V1(out_d, in_d, size);
+            break;
+
+        case 2:
+            printf("V%d...", version);
+            luFactorization_V2(out_d, in_d, size);
+            break;
+
+        case 3:
+            printf("V%d...", version);
+            luFactorization_V3(out_d, in_d, size);
+            break;
+
+        default:
+            printf("V%d...", 1);
+            luFactorization_V1(out_d, in_d, size);
+    }
     
     //gpuErrChk(cudaDeviceSynchronize());
 	cuda_ret = cudaDeviceSynchronize();

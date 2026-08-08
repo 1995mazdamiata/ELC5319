@@ -158,7 +158,7 @@ __global__ void luTrailingUpdateKernel_V2(float *out, unsigned int size, unsigne
 	}
 }
 
-// Block cyclic approach
+// Right-looking block cyclic approach
 void luFactorization_V2(float *out, float *in, unsigned int in_size) {
 	cudaMemcpy(out, in, in_size*in_size*sizeof(float), cudaMemcpyDeviceToDevice);
 
