@@ -17,7 +17,7 @@
  * LU factor diagonal block A[k][k]. Diagonal block intentionally has same
  * dimensions as thread block, so only use 1 thread block for this part
  */
-__global__ void luDiagBlockKernel(float *out, float *in, unsigned int size, unsigned int k) {
+__global__ void luDiagBlockKernel_V3(float *out, unsigned int size, unsigned int k) {
 	__shared__ float Akk_s[TILE][TILE];
 
 	int tx = threadIdx.x;
@@ -28,7 +28,7 @@ __global__ void luDiagBlockKernel(float *out, float *in, unsigned int size, unsi
 
 	// Load A[k][k], diagonal block into shared memory
 	if (ty < bs && tx < bs) {
-		Akk_s[ty][tx] = in[(row + ty)*size + (col + tx)];
+		Akk_s[ty][tx] = out[(row + ty)*size + (col + tx)];
 	}
 	__syncthreads();
 
@@ -60,8 +60,7 @@ __global__ void luDiagBlockKernel(float *out, float *in, unsigned int size, unsi
  * Diagonal block A[k][k] has already been LU factored, so this finishes
  * U for the rest of the columns in the rows of A[k][k].
  */
-__global__ void luRowUpdateKernel(float *out, float *in, unsigned int size, 
-	                                     unsigned int k, unsigned int num_blocks) {
+__global__ void luRowUpdateKernel_V3(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
 	
 	__shared__ float Lkk_s[TILE][TILE];
 	__shared__ float Akj_s[TILE][TILE];
@@ -89,7 +88,7 @@ __global__ void luRowUpdateKernel(float *out, float *in, unsigned int size,
 
 		// Load A[k][j], the rest of the columns in rows of A[k][k]
 		if(ty < bsk && tx < bsj) {
-			Akj_s[ty][tx] = in[(row + ty)*size + (col + tx)];
+			Akj_s[ty][tx] = out[(row + ty)*size + (col + tx)];
 		}
 		__syncthreads();
 
@@ -122,8 +121,7 @@ __global__ void luRowUpdateKernel(float *out, float *in, unsigned int size,
  * Diagonal block A[k][k] has already been LU factored, so this finishes
  * L for the rest of the rows in the columns of A[k][k].
  */
-__global__ void luColUpdateKernel(float *out, float *in, unsigned int size,
-                                         unsigned int k, unsigned int num_blocks) {
+__global__ void luColUpdateKernel_V3(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
 
 	__shared__ float Ukk_s[TILE][TILE];
 	__shared__ float Aik_s[TILE][TILE];
@@ -151,7 +149,7 @@ __global__ void luColUpdateKernel(float *out, float *in, unsigned int size,
 
 		// Load A[i][k], the rest of the rows in columns of A[k][k]
 		if(ty < bsi && tx < bsk) {
-			Aik_s[ty][tx] = in[(rowi + ty)*size + (row + tx)];
+			Aik_s[ty][tx] = out[(rowi + ty)*size + (row + tx)];
 		}
 		__syncthreads();
 
@@ -177,8 +175,7 @@ __global__ void luColUpdateKernel(float *out, float *in, unsigned int size,
 	}
 }
 
-__global__ void luTrailingUpdateKernel(float *out, float *in, unsigned int size,
-                unsigned int k, unsigned int num_blocks) {
+__global__ void luTrailingUpdateKernel_V3(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
 	
 	__shared__ float Lik_s[TILE][TILE];
 	__shared__ float Ukj_s[TILE][TILE];
@@ -206,7 +203,7 @@ __global__ void luTrailingUpdateKernel(float *out, float *in, unsigned int size,
 		__syncthreads();
 
 		// first column > k assigned to this thread block
-		int j0 = (k + 1) + ((pc - (k + 1)*PGRID_C)%PGRID_C + PGRID_C)%PGRID_C;
+		int j0 = (k + 1) + ((pc - (k + 1)%PGRID_C)%PGRID_C + PGRID_C)%PGRID_C;
 
 		// iterate over columns assigned to this thread block
 		for (int j = j0; j < num_blocks; j += PGRID_C) {
@@ -234,23 +231,26 @@ __global__ void luTrailingUpdateKernel(float *out, float *in, unsigned int size,
 	}
 }
 
-void luFactorization(float *out, float *in, unsigned int in_size) {
+// Block cyclic approach with shared memory
+void luFactorization_V3(float *out, float *in, unsigned int in_size) {
+	cudaMemcpy(out, in, in_size*in_size*sizeof(float), cudaMemcpyDeviceToDevice);
+
 	int num_blocks = (in_size + TILE - 1)/ TILE;
 	dim3 blockDim(TILE, TILE, 1);
 
 	for(int k = 0; k < num_blocks; ++k) {
 		// step 1: factor diagonal block of input matrix
-		luDiagBlockKernel<<<1, blockDim>>>(out, in, in_size, k);
+		luDiagBlockKernel_V3<<<1, blockDim>>>(out, in_size, k);
 
 		if (k + 1 < num_blocks) {
 			// step 2: row update
-			luRowUpdateKernel<<<dim3(PGRID_C, 1, 1), blockDim>>>(out, in, in_size, k, num_blocks);
+			luRowUpdateKernel_V3<<<dim3(PGRID_C, 1, 1), blockDim>>>(out, in_size, k, num_blocks);
 
 			// step 3: column update
-			luColUpdateKernel<<<dim3(PGRID_R, 1, 1), blockDim>>>(out, in, in_size, k, num_blocks);
+			luColUpdateKernel_V3<<<dim3(PGRID_R, 1, 1), blockDim>>>(out, in_size, k, num_blocks);
 
 			// step 4: trailing submatrix update
-			luTrailingUpdateKernel<<<dim3(PGRID_C, PGRID_R, 1), blockDim>>>(out, in, in_size, k, num_blocks);
+			luTrailingUpdateKernel_V3<<<dim3(PGRID_C, PGRID_R, 1), blockDim>>>(out, in_size, k, num_blocks);
 		}
 	}
 }

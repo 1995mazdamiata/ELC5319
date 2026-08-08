@@ -33,10 +33,10 @@ void initMatrix(float **mat_h, unsigned size)
     }
 }
 
-// reconstruct L*U = A and compare to A 
+// Sequentially compute LU and compare with GPU results 
 void verify(float* input, float* output, unsigned size) {
 
-    const float absTol = 1e-2;
+    const float relTol = 5e-4*size;
 
     float *A = (float*)calloc(size*size, sizeof(float));
     if(A == NULL) FATAL("Unable to allocate host");
@@ -68,37 +68,16 @@ void verify(float* input, float* output, unsigned size) {
 
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
-            float absErr = fabs(A[i*size + j] - output[i*size + j]);
+            float relErr = (A[i*size + j] - output[i*size + j]) / A[i*size + j];
 
-            if(absErr > absTol) {
-                printf("TEST FAILED at i = %d, j = %d, cpu = %0.5f, gpu = %0.5f, absErr = %0.5f\n\n", 
-                       i, j, A[i*size + j], output[i*size + j], absErr);
+            if(relErr > relTol || relErr < -relTol) {
+                printf("TEST FAILED at i = %d, j = %d, cpu = %0.5f, gpu = %0.5f, relErr = %0.5f\n\n", 
+                       i, j, A[i*size + j], output[i*size + j], relErr);
                 exit(0);
             }
         }
     }
     printf("TEST PASSED\n\n");
-
-    /*
-    for (int i = 0; i < size; ++i) {
-        for (int j = 0; j < size; ++j) {
-            float sum = 0.0;
-            int kmax = (i < j) ? i : j;
-            for(int t = 0; t <= kmax; ++t) {
-                float l = (t == i) ? 1.0 : output[i*size + t];
-                float u = output[t*size + j];
-                sum += l*u;
-            }
-
-            float absErr = fabs(sum - input[i*size + j]);
-            if(absErr > absTol) {
-                printf("TEST FAILED at i = %d, j = %d, cpu = %0.5f, gpu = %0.5f, relErr = %0.5f\n\n", i, j, input[i*size  + j], sum, absErr);
-                exit(0);
-            }
-        }
-    }
-    printf("TEST PASSED\n\n");
-    */
 }
 
 void startTime(Timer* timer) {

@@ -9,12 +9,13 @@
 #include <stdio.h>
 
 #include "support.h"
-#include "kernel.cu"
+#include "kernel_V2.cu"
+#include "kernel_V3.cu"
 
 int main(int argc, char* argv[])
 {
     Timer timer;
-    //srand(time(NULL));
+    srand(time(NULL));
 
     // Initialize host variables ----------------------------------------------
 
@@ -79,7 +80,8 @@ int main(int argc, char* argv[])
     printf("Launching kernel..."); fflush(stdout);
     startTime(&timer);
 
-    luFactorization(out_d, in_d, size);
+    luFactorization_V2(out_d, in_d, size);
+    //luFactorization_V3(out_d, in_d, size);
     
     //gpuErrChk(cudaDeviceSynchronize());
 	cuda_ret = cudaDeviceSynchronize();

@@ -7,7 +7,7 @@ OBJ	        = main.o support.o
 
 default: $(EXE)
 
-main.o: main.cu kernel.cu support.h
+main.o: main.cu kernel_V2.cu kernel_V3.cu support.h
 	$(NVCC) -c -o $@ main.cu $(NVCC_FLAGS)
 
 support.o: support.cu support.h
