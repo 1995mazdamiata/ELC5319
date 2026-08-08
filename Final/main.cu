@@ -14,7 +14,7 @@
 int main(int argc, char* argv[])
 {
     Timer timer;
-    srand(time(NULL));
+    //srand(time(NULL));
 
     // Initialize host variables ----------------------------------------------
 

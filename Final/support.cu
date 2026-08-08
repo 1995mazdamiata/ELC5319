@@ -36,31 +36,69 @@ void initMatrix(float **mat_h, unsigned size)
 // reconstruct L*U = A and compare to A 
 void verify(float* input, float* output, unsigned size) {
 
-  const double tol = 1e-3;
-  double maxErr = 0.0;
+    const float absTol = 1e-2;
 
-  for (int i = 0; i < size; ++i) {
-    for (int j = 0; j < size; ++j) {
-        double sum = 0.0;
-        int kmax = (i < j) ? i : j;
-        for(int t = 0; t <= kmax; ++t) {
-            double l = (t == i) ? 1.0 : (double)output[i*size + t];
-            double u = (double)output[t*size + j];
-            sum += l*u;
+    float *A = (float*)calloc(size*size, sizeof(float));
+    if(A == NULL) FATAL("Unable to allocate host");
+
+    for(int i = 0; i < size; i++) {
+
+        // U
+        for(int k = i; k < size; k++) {
+            float sum = 0.0f;
+            for(int j = 0; j < i; j++) {
+                sum += A[i*size + j] * A[j*size + k];
+            }
+
+            A[i*size + k] = input[i*size + k] - sum;
         }
 
-        double err = fabs(sum - (double)input[i*size + j]);
-        maxErr = (err > maxErr) ? err : maxErr;
-        /*
-        if(err > aTol) {
-            printf("TEST FAILED at i = %d, j = %d, cpu = %0.3f, gpu = %0.3f\n\n", i, j, input[i*size  + j], sum);
-            exit(0);
+        // L
+        for (int k = i; k < size; k++) {
+            if(i != k) {
+                float sum = 0.0f;
+                for(int j = 0; j < i; j++) {
+                    sum += A[k*size + j] * A[j*size + i];
+                }
+
+                A[k*size + i] = (input[k*size + i] - sum) / A[i*size + i];
+            }
         }
-        */
     }
-  }
-  printf("Max error: %0.3f\n\n", maxErr);
-  //printf("TEST PASSED\n\n");
+
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            float absErr = fabs(A[i*size + j] - output[i*size + j]);
+
+            if(absErr > absTol) {
+                printf("TEST FAILED at i = %d, j = %d, cpu = %0.5f, gpu = %0.5f, absErr = %0.5f\n\n", 
+                       i, j, A[i*size + j], output[i*size + j], absErr);
+                exit(0);
+            }
+        }
+    }
+    printf("TEST PASSED\n\n");
+
+    /*
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size; ++j) {
+            float sum = 0.0;
+            int kmax = (i < j) ? i : j;
+            for(int t = 0; t <= kmax; ++t) {
+                float l = (t == i) ? 1.0 : output[i*size + t];
+                float u = output[t*size + j];
+                sum += l*u;
+            }
+
+            float absErr = fabs(sum - input[i*size + j]);
+            if(absErr > absTol) {
+                printf("TEST FAILED at i = %d, j = %d, cpu = %0.5f, gpu = %0.5f, relErr = %0.5f\n\n", i, j, input[i*size  + j], sum, absErr);
+                exit(0);
+            }
+        }
+    }
+    printf("TEST PASSED\n\n");
+    */
 }
 
 void startTime(Timer* timer) {
