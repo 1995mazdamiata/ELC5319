@@ -1,0 +1,41 @@
+gpu011
+
+Setting up the problem...0.006796 s
+    Input size = 1000000
+    Number of bins = 4096
+Allocating device variables...0.169481 s
+Copying data from host to device...0.000250 s
+Launching kernel...0.022698 s
+Copying data from device to host...0.000015 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.013092 s
+    Input size = 2000000
+    Number of bins = 4096
+Allocating device variables...0.136808 s
+Copying data from host to device...0.000429 s
+Launching kernel...0.022361 s
+Copying data from device to host...0.000015 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.013082 s
+    Input size = 2000000
+    Number of bins = 2048
+Allocating device variables...0.136816 s
+Copying data from host to device...0.000425 s
+Launching kernel...0.022351 s
+Copying data from device to host...0.000015 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.013063 s
+    Input size = 2000000
+    Number of bins = 1024
+Allocating device variables...0.137775 s
+Copying data from host to device...0.000423 s
+Launching kernel...0.022292 s
+Copying data from device to host...0.000014 s
+Verifying results...TEST PASSED
+

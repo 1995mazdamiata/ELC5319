@@ -1,0 +1,155 @@
+gpu011
+
+Setting up the problem...0.053358 s
+    A: 2048 x 2048
+    B: 2048 x 2048
+    C: 2048 x 2048
+Allocating device variables...0.166348 s
+Copying data from host to device...0.001513 s
+Launching kernel...0.015063 s
+Copying data from device to host...0.002665 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.061672 s
+    A: 2200 x 2200
+    B: 2200 x 2200
+    C: 2200 x 2200
+Allocating device variables...0.141106 s
+Copying data from host to device...0.001720 s
+Launching kernel...0.015716 s
+Copying data from device to host...0.003205 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.119126 s
+    A: 2048 x 3072
+    B: 3072 x 4096
+    C: 2048 x 4096
+Allocating device variables...0.138379 s
+Copying data from host to device...0.003268 s
+Launching kernel...0.019772 s
+Copying data from device to host...0.004680 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.119692 s
+    A: 2050 x 3080
+    B: 3080 x 4100
+    C: 2050 x 4100
+Allocating device variables...0.139682 s
+Copying data from host to device...0.003276 s
+Launching kernel...0.019871 s
+Copying data from device to host...0.004461 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.000005 s
+    A: 10 x 10
+    B: 10 x 10
+    C: 10 x 10
+Allocating device variables...0.139191 s
+Copying data from host to device...0.000032 s
+Launching kernel...0.012792 s
+Copying data from device to host...0.000013 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.000153 s
+    A: 100 x 100
+    B: 100 x 100
+    C: 100 x 100
+Allocating device variables...0.136235 s
+Copying data from host to device...0.000042 s
+Launching kernel...0.012439 s
+Copying data from device to host...0.000034 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.013623 s
+    A: 1000 x 1000
+    B: 1000 x 1000
+    C: 1000 x 1000
+Allocating device variables...0.139641 s
+Copying data from host to device...0.000455 s
+Launching kernel...0.012881 s
+Copying data from device to host...0.001192 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...1.256493 s
+    A: 10000 x 10000
+    B: 10000 x 10000
+    C: 10000 x 10000
+Allocating device variables...0.137924 s
+Copying data from host to device...0.032808 s
+Launching kernel...0.568787 s
+Copying data from device to host...0.043844 s
+Matrices too large for CPU verification
+
+
+Setting up the problem...5.030222 s
+    A: 20000 x 20000
+    B: 20000 x 20000
+    C: 20000 x 20000
+Allocating device variables...0.159053 s
+Copying data from host to device...0.130660 s
+Launching kernel...4.562065 s
+Copying data from device to host...0.189749 s
+Matrices too large for CPU verification
+
+
+Setting up the problem...0.000027 s
+    A: 10 x 60
+    B: 60 x 40
+    C: 10 x 40
+Allocating device variables...0.142515 s
+Copying data from host to device...0.000034 s
+Launching kernel...0.012806 s
+Copying data from device to host...0.000014 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.002218 s
+    A: 100 x 600
+    B: 600 x 400
+    C: 100 x 400
+Allocating device variables...0.141436 s
+Copying data from host to device...0.000145 s
+Launching kernel...0.012525 s
+Copying data from device to host...0.000091 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.189132 s
+    A: 1000 x 6000
+    B: 6000 x 4000
+    C: 1000 x 4000
+Allocating device variables...0.137041 s
+Copying data from host to device...0.005056 s
+Launching kernel...0.018923 s
+Copying data from device to host...0.003056 s
+Matrices too large for CPU verification
+
+
+Setting up the problem...0.755323 s
+    A: 2000 x 12000
+    B: 12000 x 8000
+    C: 2000 x 8000
+Allocating device variables...0.137447 s
+Copying data from host to device...0.019803 s
+Launching kernel...0.082758 s
+Copying data from device to host...0.007844 s
+Matrices too large for CPU verification
+
+
+Setting up the problem...3.013994 s
+    A: 4000 x 24000
+    B: 24000 x 16000
+    C: 4000 x 16000
+Allocating device variables...0.158583 s
+Copying data from host to device...0.078563 s
+Launching kernel...0.882995 s
+Copying data from device to host...0.028658 s
+Matrices too large for CPU verification
+
