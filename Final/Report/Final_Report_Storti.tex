@@ -3,195 +3,328 @@
 \usepackage{xcolor}
 \usepackage[margin=1in]{geometry}
 \usepackage{graphicx}
+\usepackage{bm}
+\usepackage{amsmath}
 
-\title{Lab 6}
+\title{Final Project: LU Factorization}
 \author{Nicholas Storti}
 
 \begin{document}
 \maketitle
 
 \section{Introduction}
-A common problem in engineering is solving linear systems of the form $Ax=b$.
+A common problem in electrical engineering is solving systems of linear equations, which can be represented in the form $\mathbf{Ax=b}$. In this expression, $\mathbf{A}$ is the matrix of coefficients, $\mathbf{b}$ is a known vector, and $\mathbf{x}$ is the solution vector to be solved for. Systems of linear equations frequently show up in electric and magnetic circuit problems, often involving systems of nodal and loop equations. The solutions to these equations provide values for voltages at nodes and currents through each path. One technique for solving the linear system $\mathbf{Ax=b}$ is to find the inverse of matrix $\mathbf{A}$ and use the inverse to find $\mathbf{x}$ by:
+$$\mathbf{A^{-1}Ax=A^{-1}b}$$
+$$\mathbf{Ix=A^{-1}b}$$
+$$\mathbf{x=A^{-1}b}$$
+Computing $\mathbf{A^{-1}}$ explicitly, however, is computationally intensive and unnecessary for solving the linear system. A better method is to compute the vector $\mathbf{A^{-1}}b$ directly, and some techniques for accomplishing this include LU and QR factorization of matrix $\mathbf{A}$.\\
 
-\section{Reduction}
+The topic of this report is a parallel implementation of an LU factorization algorithm. Specifically, the right-looking Doolittle algorithm is implemented in Cuda C to perform parallel LU factorization of matrix $\mathbf{A}$ without pivoting. The report is organized as follows: 2) background section detailing how LU factorization can be used to solve the linear system $\mathbf{Ax=b}$ and explanation of the right-looking LU factorization algorithm, 3) implementation section detailing three different parallel implementations of the LU factorization algorithm, 4) output section with the output times for different input matrix sizes for each implementation, 5) analysis section where the performance of each implementation is discussed, and 6) conclusion.
 
-\subsection{Output}
+\section{Background}
+
+\subsection{Linear System Solution Using LU Factorization}
+LU factorization is the process of factoring a matrix $\mathbf{A}$ into a lower triangular matrix, $\mathbf{L}$, and an upper triangular matrix, $\mathbf{U}$. For 3x3 $\mathbf{A}$ this looks like:
+$$\mathbf{A} = \begin{bmatrix}
+	a_{11} & a_{12} & a_{13} \\
+	a_{21} & a_{22} & a_{23} \\
+	a_{31} & a_{32} & a_{33}
+\end{bmatrix} = 
+\begin{bmatrix}
+	1 & 0 & 0 \\
+	l_{21} & 1 & 0 \\
+	l_{31} & l_{32} & 1
+\end{bmatrix}
+\begin{bmatrix}
+	u_{11} & u_{12} & u_{13} \\
+	0 & u_{22} & u_{23} \\
+	0 & 0 & u_{33}
+\end{bmatrix} = \mathbf{LU}$$
+Substituting $\mathbf{A=LU}$ into $\mathbf{Ax=b}$ yields [1]:
+$$\mathbf{Ax=b}$$
+$$\mathbf{LUx=b}$$
+$$\mathbf{Ux=L^{-1}b}$$
+$$\mathbf{x=U^{-1}(L^{-1}b)}$$
+If we let $\mathbf{y=Ux}$, $\mathbf{Ax=b}$ becomes [1]:
+$$\mathbf{Ax=b}$$
+$$\mathbf{LUx=b}$$
+$$\mathbf{Ly=b}$$
+$$\mathbf{Ux=y}$$
+We can then solve for $\mathbf{x}$ by first solving the linear system $\mathbf{Ly=b}$ for $\mathbf{y}$, then solving the linear system $\mathbf{Ux=y}$ for $\mathbf{x}$. $\mathbf{Ly=b}$ can be solved relatively easily using forward substitution since $\mathbf{L}$ is lower triangular. Similarly, $\mathbf{Ux=y}$ can be solved easily using backward substitution since $\mathbf{U}$ is upper triangular.\\ 
+
+This is how the LU factorization of $\mathbf{A}$ can be used to solve the linear system $\mathbf{Ax=b}$. While the explanation for how the LU factorization can be used is presented, the primary focus of this report is computation of the LU factorization itself on a parallel processor (GPU). The remainder of the report will deal with parallel implementation of an LU factorization algorithm.
+
+\subsection{Right-Looking Doolittle LU Factorization Algorithm}
+The right-looking algorithm is an alternative to Gaussian elimination for calculating $\mathbf{L}$ and $\mathbf{U}$. First, $\mathbf{A=LU}$ can be expressed as [1]:
+$$\begin{bmatrix}
+	a_{11} & \bm{a_{12}} \\
+	\bm{a_{21}} & \bm{A_{22}}
+\end{bmatrix} = 
+\begin{bmatrix}
+	1 & \bm{0} \\
+	\bm{l_{21}} & \bm{L_{22}}
+\end{bmatrix}
+\begin{bmatrix}
+	u_{11} & \bm{u_{12}} \\
+	\bm{0} & \bm{U_{22}}
+\end{bmatrix} = 
+\begin{bmatrix}
+	u_{11} & \bm{u_{12}} \\
+	u_{11}\bm{l_{21}} & (\bm{l_{21}u_{12}+L_{22}U_{22}})
+\end{bmatrix}$$
+If $\mathbf{A}$ is $n\times n$, then $u_{11}$ is a scalar diagonal element of $\mathbf{U}$, $\bm{u_{12}}$ is a $1\times n$ row vector of $\mathbf{U}$, $\bm{l_{21}}$ is a $n\times 1$ column vector of $\mathbf{L}$, and $\bm{L_{22}}$, $\bm{U_{22}}$ are $(n-1)\times (n-1)$ trailing submatrices of $\mathbf{L}$ and $\mathbf{U}$. The elements of $\mathbf{L}$ and $\mathbf{U}$ can then be solved for by [1]:
+$$u_{11}=a_{11}$$
+$$\bm{u_{12}}=\bm{a_{12}}$$
+$$\bm{l_{21}}=\frac{1}{u_{11}}\bm{a_{21}}$$
+$$\bm{L_{22}U_{22}}=\bm{A_{22}}-\bm{l_{21}u_{12}}$$
+$\bm{L_{22}U_{22}}$ is the Schur complement $\bm{S_{22}}$ of $\bm{A_{22}}$. The previous calculations can then recursively be used on $\bm{S_{22}}$ to find the entirety of $\mathbf{L}$ and $\mathbf{U}$ for $\mathbf{A}$. The steps of the algorithm are:
+\begin{enumerate}
+	\item Update current row of $\mathbf{U}$ with current row of $\mathbf{A}$ by $\bm{u_{12}}=\bm{a_{12}}$.
+	\item Calculate current column of $\mathbf{L}$ using $\bm{l_{21}}=\frac{1}{u_{11}}\bm{a_{21}}$.
+	\item Calculate Schur complement of trailing submatrix using $\bm{A_{22}}=\bm{A_{22}}-\bm{l_{21}u_{12}}$. Elements of trailing submatrix $\bm{A_{22}}$ are overwritten in $\mathbf{A}$ with the Schur complement so that step 1 will be valid for the next iteration.
+	\item Recursively go back to step 1 on trailing submatrix $\bm{A_{22}}$ until all of $\mathbf{L}$ and $\mathbf{U}$ are filled out.
+\end{enumerate}
+
+\section{Implementation}
+
+\subsection{Naive Approach}
+Since each iteration of the algorithm depends on the previous iteration, this aspect must be performed serially and cannot be parallelized. On each iteration, however, there are aspects that can be parallelized. Specifically, the $\mathbf{L}$ column update in step 2 and the Schur complement trailing submatrix update in step 3 on each iteration can be parallelized. Two separate kernels are implemented for each of these calculations.\\
+
+The naive implementation assigns a single thread to each output element.
+
 \begin{verbatim}
-	Setting up the problem...0.000006 s
-	Input size = 512
-	Allocating device variables...0.159924 s
-	Copying data from host to device...0.000032 s
-	Launching kernel...0.010355 s
-	Copying data from device to host...0.000019 s
+	__global__ void luColUpdateKernel_V1(float *out, unsigned int size, unsigned int k) {
+		int i = k + 1 + blockIdx.x*blockDim.x + threadIdx.x;
+		
+		if(i < size) {
+			out[i*size + k] /= out[k*size + k];
+		}
+	}
+\end{verbatim}
+
+\begin{verbatim}
+	__global__ void luTrailingUpdateKernel_V1(float *out, unsigned int size, unsigned int k) {
+		int i = k + 1 + blockIdx.y * blockDim.y + threadIdx.y;
+		int j = k + 1 + blockIdx.x * blockDim.x + threadIdx.x;
+		
+		if(i < size && j < size) {
+			out[i*size + j] -= out[i*size + k] * out[k*size + j];
+		}
+	}
+\end{verbatim}
+
+\subsection{Block Cyclic Coarsening}
+This allows for better work efficiency and higher thread utilization.
+
+\subsection{Block Cyclic with Shared Memory Tiling}
+Tiling reduces global memory accesses.
+
+\section{Output}
+
+\subsection{Naive Implementation}
+\begin{verbatim}
+	Setting up the problem...0.000011 s
+	Input size = 16
+	Allocating device variables...0.131343 s
+	Copying data from host to device...0.000040 s
+	Launching kernel V1...0.101835 s
+	Copying data from device to host...0.000023 s
 	Verifying results...TEST PASSED
 	
 	
-	Setting up the problem...0.000012 s
-	Input size = 1024
-	Allocating device variables...0.137162 s
-	Copying data from host to device...0.000032 s
-	Launching kernel...0.010324 s
-	Copying data from device to host...0.000019 s
+	Setting up the problem...0.000103 s
+	Input size = 64
+	Allocating device variables...0.117873 s
+	Copying data from host to device...0.000058 s
+	Launching kernel V1...0.101291 s
+	Copying data from device to host...0.000027 s
 	Verifying results...TEST PASSED
 	
 	
-	Setting up the problem...0.000041 s
+	Setting up the problem...0.000856 s
+	Input size = 200
+	Allocating device variables...0.116584 s
+	Copying data from host to device...0.000092 s
+	Launching kernel V1...0.102618 s
+	Copying data from device to host...0.000176 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.005246 s
+	Input size = 500
+	Allocating device variables...0.117505 s
+	Copying data from host to device...0.000331 s
+	Launching kernel V1...0.105834 s
+	Copying data from device to host...0.000956 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.020418 s
+	Input size = 1000
+	Allocating device variables...0.116747 s
+	Copying data from host to device...0.001030 s
+	Launching kernel V1...0.113392 s
+	Copying data from device to host...0.002477 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.079548 s
+	Input size = 2000
+	Allocating device variables...0.118421 s
+	Copying data from host to device...0.003544 s
+	Launching kernel V1...0.148341 s
+	Copying data from device to host...0.006362 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.494852 s
 	Input size = 5000
-	Allocating device variables...0.137643 s
-	Copying data from host to device...0.000034 s
-	Launching kernel...0.010342 s
-	Copying data from device to host...0.000021 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.000749 s
-	Input size = 100000
-	Allocating device variables...0.134589 s
-	Copying data from host to device...0.000070 s
-	Launching kernel...0.010366 s
-	Copying data from device to host...0.000013 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.003736 s
-	Input size = 500000
-	Allocating device variables...0.135644 s
-	Copying data from host to device...0.000169 s
-	Launching kernel...0.010399 s
-	Copying data from device to host...0.000014 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.006859 s
-	Input size = 1000000
-	Allocating device variables...0.136536 s
-	Copying data from host to device...0.000254 s
-	Launching kernel...0.010344 s
-	Copying data from device to host...0.000014 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.013095 s
-	Input size = 2000000
-	Allocating device variables...0.134931 s
-	Copying data from host to device...0.000425 s
-	Launching kernel...0.010344 s
-	Copying data from device to host...0.000019 s
+	Allocating device variables...0.118831 s
+	Copying data from host to device...0.021155 s
+	Launching kernel V1...0.599423 s
+	Copying data from device to host...0.035856 s
 	Verifying results...TEST PASSED
 \end{verbatim}
-	
-\subsection{Answer Section}
-\begin{enumerate}
-	\item How many times does a single thread block synchronize to reduce its portion of the array to a single value?
-	
-	There are 512 threads in a thread block. On each iteration of the for-loop for the reduction tree, each of the 512 threads synchronizes. If the number of elements to process reduces by half on each iteration of the for-loop, then $\log_2(512)$ for-loop iterations are performed. A single thread block then  performs $(512 \ \frac{synchronizations}{iteration})(log_2(512) \ iterations)=(512)(9)=4608$ synchronizations to reduce its portion of the array to a single value.
-	
-	\item What is the minimum, maximum, and average number of "real" operations that a thread will perform? ``Real'' operations are those that directly contribute to the final reduction value.
-	
-	For my implementation of the reduction kernel, each thread loads two elements from global memory, adds them together to complete the first level of the reduction tree, then stores the result in a shared memory array that has the same size as the number of threads in the thread block. When the for-loop starts, only half of the threads compute the next level of the reduction tree. Since each thread performs at least one addition to compute the first level of the reduction three, the minimum number of "real" operations that a thread will perform is 1. Each block processes a 1024 element section of the input array. There will be one thread in the block that is active on every iteration of the for-loop. The maximum number of "real" operations that this thread will perform is $\log_2(1024)=10$ operations. The average number of "real" operations is $\frac{1+10}{2}=5.5$ operations.
-\end{enumerate}
-	
-\section{Prefix Scan}
 
-\subsection{Output}
+\subsection{Block Cyclic}
 \begin{verbatim}
 	Setting up the problem...0.000013 s
+	Input size = 16
+	Allocating device variables...0.117475 s
+	Copying data from host to device...0.000046 s
+	Launching kernel V2...0.100952 s
+	Copying data from device to host...0.000024 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.000103 s
+	Input size = 64
+	Allocating device variables...0.117988 s
+	Copying data from host to device...0.000058 s
+	Launching kernel V2...0.100843 s
+	Copying data from device to host...0.000027 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.000849 s
+	Input size = 200
+	Allocating device variables...0.116893 s
+	Copying data from host to device...0.000090 s
+	Launching kernel V2...0.101611 s
+	Copying data from device to host...0.000179 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.005265 s
+	Input size = 500
+	Allocating device variables...0.118979 s
+	Copying data from host to device...0.000331 s
+	Launching kernel V2...0.104408 s
+	Copying data from device to host...0.000941 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.020434 s
 	Input size = 1000
-	Allocating device variables...0.166151 s
-	Copying data from host to device...0.000034 s
-	Launching kernel...0.016869 s
-	Copying data from device to host...0.000014 s
+	Allocating device variables...0.116915 s
+	Copying data from host to device...0.001020 s
+	Launching kernel V2...0.116745 s
+	Copying data from device to host...0.002470 s
 	Verifying results...TEST PASSED
 	
 	
-	Setting up the problem...0.000022 s
+	Setting up the problem...0.079565 s
 	Input size = 2000
-	Allocating device variables...0.134964 s
-	Copying data from host to device...0.000042 s
-	Launching kernel...0.016448 s
-	Copying data from device to host...0.000016 s
+	Allocating device variables...0.118208 s
+	Copying data from host to device...0.003524 s
+	Launching kernel V2...0.208327 s
+	Copying data from device to host...0.006385 s
 	Verifying results...TEST PASSED
 	
 	
-	Setting up the problem...0.000761 s
-	Input size = 100000
-	Allocating device variables...0.141793 s
-	Copying data from host to device...0.000071 s
-	Launching kernel...0.016484 s
-	Copying data from device to host...0.000191 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.003743 s
-	Input size = 500000
-	Allocating device variables...0.137189 s
-	Copying data from host to device...0.000167 s
-	Launching kernel...0.016513 s
-	Copying data from device to host...0.000889 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.006852 s
-	Input size = 1000000
-	Allocating device variables...0.135980 s
-	Copying data from host to device...0.000261 s
-	Launching kernel...0.016640 s
-	Copying data from device to host...0.001061 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.031773 s
-	Input size = 5000000
-	Allocating device variables...0.142516 s
-	Copying data from host to device...0.000945 s
-	Launching kernel...0.016712 s
-	Copying data from device to host...0.002563 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.062833 s
-	Input size = 10000000
-	Allocating device variables...0.143745 s
-	Copying data from host to device...0.001768 s
-	Launching kernel...0.016744 s
-	Copying data from device to host...0.005084 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.315241 s
-	Input size = 50000000
-	Allocating device variables...0.143893 s
-	Copying data from host to device...0.008548 s
-	Launching kernel...0.018036 s
-	Copying data from device to host...0.022835 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...0.628785 s
-	Input size = 100000000
-	Allocating device variables...0.139372 s
-	Copying data from host to device...0.016965 s
-	Launching kernel...0.019665 s
-	Copying data from device to host...0.043368 s
-	Verifying results...TEST PASSED
-	
-	
-	Setting up the problem...3.140867 s
-	Input size = 500000000
-	Allocating device variables...0.158835 s
-	Copying data from host to device...0.084609 s
-	Launching kernel...0.029150 s
-	Copying data from device to host...0.232920 s
+	Setting up the problem...0.494968 s
+	Input size = 5000
+	Allocating device variables...0.118387 s
+	Copying data from host to device...0.021173 s
+	Launching kernel V2...2.040773 s
+	Copying data from device to host...0.035730 s
 	Verifying results...TEST PASSED
 \end{verbatim}
 	
-\subsection{Answer Section}
+\subsection{Block Cyclic with Shared Memory Tiling}
+\begin{verbatim}
+	Setting up the problem...0.000014 s
+	Input size = 16
+	Allocating device variables...0.117405 s
+	Copying data from host to device...0.000040 s
+	Launching kernel V3...0.101178 s
+	Copying data from device to host...0.000023 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.000103 s
+	Input size = 64
+	Allocating device variables...0.117837 s
+	Copying data from host to device...0.000058 s
+	Launching kernel V3...0.100756 s
+	Copying data from device to host...0.000028 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.000855 s
+	Input size = 200
+	Allocating device variables...0.116941 s
+	Copying data from host to device...0.000093 s
+	Launching kernel V3...0.101196 s
+	Copying data from device to host...0.000185 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.005244 s
+	Input size = 500
+	Allocating device variables...0.117837 s
+	Copying data from host to device...0.000331 s
+	Launching kernel V3...0.103023 s
+	Copying data from device to host...0.000940 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.020438 s
+	Input size = 1000
+	Allocating device variables...0.117181 s
+	Copying data from host to device...0.001030 s
+	Launching kernel V3...0.111351 s
+	Copying data from device to host...0.002467 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.079559 s
+	Input size = 2000
+	Allocating device variables...0.118131 s
+	Copying data from host to device...0.003535 s
+	Launching kernel V3...0.168336 s
+	Copying data from device to host...0.006392 s
+	Verifying results...TEST PASSED
+	
+	
+	Setting up the problem...0.494934 s
+	Input size = 5000
+	Allocating device variables...0.118447 s
+	Copying data from host to device...0.021156 s
+	Launching kernel V3...0.948372 s
+	Copying data from device to host...0.035792 s
+	Verifying results...TEST PASSED
+\end{verbatim}
+
+\section{Analysis}
+Naive implementation was the worst.
+
+\section{Conclusion}
+This was a decent project.
+
+\section{References}
 \begin{enumerate}
-	\item Describe how you handled arrays not a power of two in size and all performance-enhancing optimizations you added.
-	
-	For arrays not a power of two in size, there are more threads than input elements. For the extra threads, those threads wrote 0's to the extra shared memory locations. In terms of performance enhancing optimizations, to decrease memory access latency, I used shared memory to store the segment of the input array being processed by each block. I also used the three-phase Brent-Kung scan algorithm to increase work-efficiency. In this algorithm, each thread processes a small amount of the input segment serially first. This allows for more of the threads to be utilized. In the second phase, the Brent-Kung scan algorithm is performed on the last element from each of the serial segments. In the third phase, offsets are then added to each element to complete the scan. 
-	
-	I also made a small modification to the verify function in support.cu to allow for testing of larger input arrays than 1,000,000. I changed the data type of the sum variable from float to double. This allowed me to test input arrays up to 500,000,000 elements.
+	\item https://courses.grainger.illinois.edu/cs357/sp2020/notes/ref-9-linsys.html
 \end{enumerate}
 	
 \end{document}
