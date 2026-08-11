@@ -27,7 +27,8 @@ __global__ void luColUpdateKernel_V1(float *out, unsigned int size, unsigned int
  * luTrailingUpdateKernel
  * 
  * Update the trailing submatrix after column k has been filled. One thread for every
- * element of the output.
+ * element of the output. Compute Schur complement of trailing submatrix. Row k of this
+ * update becomes row k of U. The remaining submatrix is recursively processed.
  */
 __global__ void luTrailingUpdateKernel_V1(float *out, unsigned int size, unsigned int k) {
 	int i = k + 1 + blockIdx.y * blockDim.y + threadIdx.y;
