@@ -17,7 +17,7 @@ A common problem in electrical engineering is solving systems of linear equation
 $$\mathbf{A^{-1}Ax=A^{-1}b}$$
 $$\mathbf{Ix=A^{-1}b}$$
 $$\mathbf{x=A^{-1}b}$$
-Computing $\mathbf{A^{-1}}$ explicitly, however, is computationally intensive and unnecessary for solving the linear system. A better method is to compute the vector $\mathbf{A^{-1}}b$ directly, and some techniques for accomplishing this include LU and QR factorization of matrix $\mathbf{A}$.\\
+Computing $\mathbf{A^{-1}}$ explicitly, however, is computationally intensive and unnecessary for solving the linear system. A better method is to compute the vector $\mathbf{A^{-1}b}$ directly, and some techniques for accomplishing this include LU and QR factorization of matrix $\mathbf{A}$.\\
 
 The topic of this report is a parallel implementation of an LU factorization algorithm. Specifically, the right-looking Doolittle algorithm is implemented in Cuda C to perform parallel LU factorization of matrix $\mathbf{A}$ without pivoting. The report is organized as follows: 2) background section detailing how LU factorization can be used to solve the linear system $\mathbf{Ax=b}$ and explanation of the right-looking LU factorization algorithm, 3) implementation section detailing three different parallel implementations of the LU factorization algorithm, 4) output section with the output times for different input matrix sizes for each implementation, 5) analysis section where the performance of each implementation is discussed, and 6) conclusion.
 
