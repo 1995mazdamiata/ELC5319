@@ -175,6 +175,12 @@ __global__ void luColUpdateKernel_V3(float *out, unsigned int size, unsigned int
 	}
 }
 
+/**
+ * luTrailingUpdateKernel
+ * 
+ * Update the ramining active trailing submatrix with the Schur complement:
+ * A[i][j] = A[i][j] - L[i][k]*U[k][j]. Uses parallel block matrix multiplication.
+ */
 __global__ void luTrailingUpdateKernel_V3(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
 	
 	__shared__ float Lik_s[TILE][TILE];
@@ -216,10 +222,11 @@ __global__ void luTrailingUpdateKernel_V3(float *out, unsigned int size, unsigne
 			}
 			__syncthreads();
 
-			// Fill out rest of A[i][j]
+			// Fill out rest of trailing A[i][j] with Schur complement
 			if (ty < bsi && tx < bsj) {
 				float sum = 0.0f;
 
+				// Parallel matrix multiplication
 				for(int t = 0; t < bsk; ++t) {
 					sum += Lik_s[ty][t] * Ukj_s[t][tx];
 				}
