@@ -1,0 +1,41 @@
+gpu011
+
+Setting up the problem...0.000019 s
+    Vector size = 1000
+Allocating device variables...0.160569 s
+Copying data from host to device...0.000033 s
+Launching kernel...0.008952 s
+NumBlocks: 4
+Copying data from device to host...0.000014 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.000157 s
+    Vector size = 10000
+Allocating device variables...0.134905 s
+Copying data from host to device...0.000044 s
+Launching kernel...0.008912 s
+NumBlocks: 40
+Copying data from device to host...0.000032 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.001515 s
+    Vector size = 100000
+Allocating device variables...0.136751 s
+Copying data from host to device...0.000099 s
+Launching kernel...0.008942 s
+NumBlocks: 391
+Copying data from device to host...0.000210 s
+Verifying results...TEST PASSED
+
+
+Setting up the problem...0.013612 s
+    Vector size = 1000000
+Allocating device variables...0.138380 s
+Copying data from host to device...0.000459 s
+Launching kernel...0.008971 s
+NumBlocks: 3907
+Copying data from device to host...0.001236 s
+Verifying results...TEST PASSED
+

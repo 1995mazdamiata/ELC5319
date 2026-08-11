@@ -1,0 +1,22 @@
+gpu011
+There is 1 device supporting CUDA
+
+Device 0: "NVIDIA L40S"
+  Major revision number:                         8
+  Minor revision number:                         9
+  Total amount of global memory:                 432537600 bytes
+  Number of multiprocessors:                     142
+  Number of cores:                               1136
+  Total amount of constant memory:               65536 bytes
+  Total amount of shared memory per block:       49152 bytes
+  Total number of registers available per block: 65536
+  Warp size:                                     32
+  Maximum number of threads per block:           1024
+  Maximum sizes of each dimension of a block:    1024 x 1024 x 64
+  Maximum sizes of each dimension of a grid:     2147483647 x 65535 x 65535
+  Maximum memory pitch:                          2147483647 bytes
+  Texture alignment:                             512 bytes
+  Clock rate:                                    2.52 GHz
+  Concurrent copy and execution:                 Yes
+
+TEST PASSED
