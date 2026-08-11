@@ -41,6 +41,7 @@ void verify(float* input, float* output, unsigned size) {
     float *A = (float*)calloc(size*size, sizeof(float));
     if(A == NULL) FATAL("Unable to allocate host");
 
+    // Right-looking Doolittle algorithm for sequential LU factorization
     for(int i = 0; i < size; i++) {
 
         // U
