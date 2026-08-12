@@ -5,6 +5,7 @@
 \usepackage{graphicx}
 \usepackage{bm}
 \usepackage{amsmath}
+\usepackage{booktabs}
 
 \title{Final Project: LU Factorization}
 \author{Nicholas Storti}
@@ -90,7 +91,7 @@ $\bm{L_{22}U_{22}}$ is the Schur complement $\bm{S_{22}}$ of $\bm{A_{22}}$. The 
 \subsection{Naive Approach}
 Since each iteration of the algorithm depends on the previous iteration, this aspect must be performed serially and cannot be parallelized. On each iteration, however, there are aspects that can be parallelized. Specifically, the $\mathbf{L}$ column update in step 2 and the Schur complement trailing submatrix update in step 3 on each iteration can be parallelized. Two separate kernels are implemented for each of these calculations.\\
 
-The naive implementation assigns a single thread to each output element.
+The first kernel, "luColUpdateKernel\textunderscore V1" shown below, performs the $\mathbf{L}$ column update in step 2. In this naive implementation, each element of the column is assigned its own thread. Each thread calculates one element in the column of $\mathbf{L}$ for the $k^{th}$ iteration. Over each iteration, the size of the column decreases by 1. So, as the algorithm progresses, fewer threads are active on each iteration. The parameter "size" indicating the dimension of the matrix, the parameter "k" indicating the iteration number, and the thread index are used to determine if a thread is active or not. A major drawback of this implementation is that the number of active threads decreases on each iteration. This leads to increased control divergence as the algorithm progresses and decreased work efficiency.
 
 \begin{verbatim}
 	__global__ void luColUpdateKernel_V1(float *out, unsigned int size, unsigned int k) {
@@ -101,6 +102,8 @@ The naive implementation assigns a single thread to each output element.
 		}
 	}
 \end{verbatim}
+
+The second kernel, "luTrailingUpdateKernel\textunderscore V1" shown below, performs the trailing submatrix update in step 3 of the algorithm. In this naive implementation, each element of the output submatrix is assigned its own thread. Each thread calculates one element in the trailing submatrix for the $k^{th}$ iteration. Over each iteration, the dimension of the square submatrix decreases by 1. So, as the algorithm progresses, fewer threads are active on each iteration. The parameter "size", parameter "k", and the thread index are used to determine if a thread is active or not. Just as with the previous kernel, a major drawback of this implementation is that the number of active threads decreases on each iteration. This also leads to increased control divergence as the algorithm progresses and decreased work efficiency.
 
 \begin{verbatim}
 	__global__ void luTrailingUpdateKernel_V1(float *out, unsigned int size, unsigned int k) {
@@ -113,13 +116,161 @@ The naive implementation assigns a single thread to each output element.
 	}
 \end{verbatim}
 
+Both of these kernels are called within a wrapper function. The wrapper function determines the block and grid dimensions based on the input matrix dimension. The wrapper function uses a for-loop to iterate through the right-looking algorithm. On each iteration, the size of the column of $\mathbf{L}$ being calculated and the dimension of the square trailing submatrix being calculated both decrease by 1. The for-loop iterates until $\mathbf{L}$ and $\mathbf{U}$ have both been calculated. $\mathbf{L}$ and $\mathbf{U}$ are both stored in the output array "out". Since $\mathbf{L}$ is lower triangular and $\mathbf{U}$ is upper triangular, they can be stored in the same array. The diagonal of 1's in $\mathbf{L}$ is then implicit.
+
 \subsection{Block Cyclic Coarsening}
-This allows for better work efficiency and higher thread utilization.
+One way to compensate for decrease in active threads as the algorithm progresses is through thread coarsening with block-cyclic mapping [2][3]. This technique requires a small modification to the right looking algorithm listed earlier. Step 1 is split into two separate steps where the first element or diagonal element of the current row of $\mathbf{U}$ is calculated separately, then the rest of the row of $\mathbf{U}$ is calculated. The second modification is that instead of individual elements being process by each thread, tiled blocks of the input matrix are processed by each thread to achieve coarsening [2][3]. \\
+
+The modified algorithm consists of four separate kernels. The first kernel performs a complete LU factorization on a diagonal block of the input matrix. The diagonal block and the thread block for this kernel have the same dimensions, so that there will be 1 thread per element of the matrix block. Because of this, the diagonal matrix block will fit entirely in 1 thread block, and the grid for this kernel will always have 1 block. This kernel computes the entire LU factorization on the diagonal block of the input matrix using the right-looking algorithm. On each iteration of the for-loop in the wrapper function, this kernel will progress down the diagonal of the input matrix. On each iteration, this kernel computes the LU factorization of the next diagonal block of the input matrix. For this implementation, the dimension of the diagonal block and the dimension of the thread block are both $16\times 16$ giving a total of 256 threads in the singular thread block for this kernel. Code for "luDiagonalBlockKernel\textunderscore V2" is shown below.
+
+\begin{verbatim}
+	__global__ void luDiagBlockKernel_V2(float *out, unsigned int size, unsigned int k) {
+		int tx = threadIdx.x;
+		int ty = threadIdx.y;
+		int row = k*TILE;
+		int col = k*TILE;
+		int bs = min(TILE, size - row);
+		
+		// LU factorization of A[k][k]
+		for (unsigned int p = 0; p < bs; ++p) {
+			// Multipliers
+			if(tx == p && ty > p && ty < bs) {
+				out[(row+ty)*size + (col+p)] = out[(row+ty)*size + (col+p)] / out[(row+p)*size + (col+p)];
+			}
+			__syncthreads();
+			
+			// in place update
+			if(ty > p && ty < bs && tx > p && tx < bs) {
+				out[(row+ty)*size + (col+tx)] -= out[(row+ty)*size + (col+p)] * out[(row+p)*size + (col+tx)];
+			}
+			__syncthreads();
+		}
+	}
+\end{verbatim}
+
+The second kernel completes the rest of the rows of $\mathbf{U}$ for the same rows calculated in the diagonal block kernel on the current iteration. Since the corresponding rows of $\mathbf{L}$ have already been calculated in the diagonal block kernel, and the columns of $\mathbf{A}$ are known, each remaining column $j$ of $\mathbf{U}$ for the required rows can be calculated using forward substitution. Since the diagonal block kernel processes a diagonal block with dimension $16\times 16$, 16 rows of $\mathbf{U}$ must be completed on each iteration, and the number of columns decreases by 16 on each iteration. In contrast to the diagonal block kernel, multiple blocks are used for this kernel. Each column for the rows of $\mathbf{U}$ to be calculated is assigned to a different block in a cyclic manner. For example, column 1 to block 1, column 2 to block 2, column 3 to block 3, then back around for column 4 to block 1. This distributes the load among the blocks, and it ensures that each block has the same amount of work over each iteration as the number of columns decreases. Each thread in a thread block is assigned its own column to process. Each thread processes the elements in its column sequentially inside a for-loop. This is necessary since forward substitution is sequential. Thus, the columns are processed in parallel, and the rows are processed sequentially. Code for "luRowUpdateKernel\textunderscore V2" is shown below.
+
+\begin{verbatim}
+	__global__ void luRowUpdateKernel_V2(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
+		int tx = threadIdx.x;
+		int ty = threadIdx.y;
+		int pc = blockIdx.x;
+		int row = k*TILE;
+		int bsk = min(TILE, size - row);
+		
+		// First column > k assigned to this thread block
+		int j0 = (k + 1) + ((pc - (k + 1)%PGRID_C)%PGRID_C + PGRID_C)%PGRID_C;
+		
+		// iterate over columns assigned to this thread block
+		for (unsigned int j = j0; j < num_blocks; j += PGRID_C) {
+			int col = j*TILE;
+			int bsj = min(TILE, size - col);
+			
+			// Forward substitution: solve L*X = A
+			// Finding U for the rest of the columns in the rows of A[k][k]
+			if(ty == 0 && tx < bsj) {
+				for (int p = 0; p < bsk; ++p) {
+					float sum = 0.0f;
+					
+					for(int t = 0; t < p; ++t) {
+						//sum += Lkk_s[p][t] * Akj_s[t][tx];
+						sum += out[(row+p)*size + (row+t)] * out[(row+t)*size + (col+tx)];
+					}
+					//Akj_s[p][tx] -= sum;
+					out[(row+p)*size + (col+tx)] -= sum;
+				}
+			}
+			__syncthreads();
+		}
+	}
+\end{verbatim}
+
+Similarly to the row update kernel, the third kernel completes the rest of the columns of $\mathbf{L}$ for the same columns calculated in the diagonal block kernel on the current iteration. Since the corresponding columns of $\mathbf{U}$ have already been calculated in the diagonal block kernel, and the rows of $\mathbf{A}$ are known, each remaining row $i$ of $\mathbf{L}$ for the required columns can also be calculated using substitution. Since the diagonal block kernel processes a diagonal block with dimension $16\times 16$, 16 columns of $\mathbf{L}$ must be completed on each iteration, and the number of rows decreases by 16 on each iteration. Similarly to the row update kernel, the column update kernel  uses multiple blocks. Each row for the columns of $\mathbf{L}$ to be calculated is assigned to a different block in a cyclic matter. Again, this distributes the load evenly among blocks and ensures that each block is performing the same amount of work even when the number of rows decreases over each iteration. Each thread in a thread block is assigned its own row to process. Each thread processes the elements in its row sequentially inside a for loop. This sequential part is necessary since substitution is sequential. Thus, the rows are processed in parallel, and the columns are processed sequentially. Code for "luColUpdateKernel\textunderscore V2" is shown below.
+
+\begin{verbatim}
+	__global__ void luColUpdateKernel_V2(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
+		int tx = threadIdx.x;
+		int ty = threadIdx.y;
+		int pr = blockIdx.x;
+		int row = k*TILE;
+		int bsk = min(TILE, size - row);
+		
+		// First row > k assigned to this thread block
+		int i0 = (k + 1) + ((pr - (k + 1)%PGRID_R)%PGRID_R + PGRID_R)%PGRID_R;
+		
+		// iterate over rows assigned to this thread block
+		for (int i = i0; i < num_blocks; i += PGRID_R) {
+			int rowi = i*TILE;
+			int bsi = min(TILE, size - rowi);
+			
+			// Backward substitution: solve X*U = A
+			// Finding L for the rest of the rows in the columns of A[k][k]
+			if(tx == 0 && ty < bsi) {
+				for(int c = 0; c < bsk; ++c) {
+					float sum = 0.0f;
+					
+					for(int r = 0; r < c; ++r) {
+						sum += out[(rowi+ty)*size + (row+r)] * out[(row+r)*size + (row+c)];
+					}
+					out[(rowi+ty)*size + (row+c)] = (out[(rowi+ty)*size + (row+c)] - sum)/out[(row+c)*size + (row+c)];
+				}
+			}
+			__syncthreads();
+		}
+	}
+\end{verbatim}
+
+The fourth and final kernel completes the trailing submatrix update for the remaining portion of the input matrix on the current iteration. This kernel computes the Schur complement for the trailing submatrix. Computing the Schur complement is essentially performing a matrix-matrix multiplication with the previously calculated rows of $\mathbf{U}$ and columns of $\mathbf{L}$, then subtracting this from the remaining trailing submatrix of $\mathbf{A}$. Multiple blocks are used for this kernel. The trailing submatrix is divided into smaller blocks, and each matrix block is assigned to a thread block in a cyclic fashion. A 2D grid of thread blocks is used to process the 2D grid of matrix blocks. Assigning matrix blocks to thread blocks in a cyclic manner distributes the load evenly among thread blocks and ensures that each block is performing the same amount of work. This is essential as the trailing submatrix gets smaller on each iteration. Each thread in a thread block is assigned its own matrix block or tile of the trailing submatrix. Each thread calculates the Schur complement for the elements in its tile inside a for loop. Thus, each tiled block of the trailing submatrix is processed in parallel, and the elements of each matrix block are processed sequentially. Assigning entire blocks of elements to each thread achieves coarsening. Code for "luTrailingUpdateKernel\textunderscore V2" is shown below.
+
+\begin{verbatim}
+	__global__ void luTrailingUpdateKernel_V2(float *out, unsigned int size, unsigned int k, unsigned int num_blocks) {
+		int tx = threadIdx.x;
+		int ty = threadIdx.y;
+		int pc = blockIdx.x;
+		int pr = blockIdx.y;
+		
+		int rowk = k*TILE;
+		int bsk = min(TILE, size - rowk);
+		
+		// first row > k assigned to this thread block
+		int i0 = (k + 1) + ((pr - (k + 1)%PGRID_R)%PGRID_R + PGRID_R)%PGRID_R;
+		
+		// iterate over rows assigned to this thread block
+		for(int i = i0; i < num_blocks; i += PGRID_R) {
+			int rowi = i*TILE;
+			int bsi = min(TILE, size - rowi);
+			
+			// first column > k assigned to this thread block
+			int j0 = (k + 1) + ((pc - (k + 1)%PGRID_C)%PGRID_C + PGRID_C)%PGRID_C;
+			
+			// iterate over columns assigned to this thread block
+			for (int j = j0; j < num_blocks; j += PGRID_C) {
+				int colj = j*TILE;
+				int bsj = min(TILE, size - colj);
+				
+				// Fill out rest of A[i][j]
+				if (ty < bsi && tx < bsj) {
+					float sum = 0.0f;
+					
+					for(int t = 0; t < bsk; ++t) {
+						sum += out[(rowi+ty)*size + (rowk+t)] * out[(rowk+t)*size + (colj+tx)];
+					}
+					out[(rowi + ty)*size + (colj + tx)] -= sum;
+				}
+				__syncthreads();
+			}
+			__syncthreads();
+		}
+	}
+\end{verbatim}
+
+The four kernels described previously are called within a wrapper function. The wrapper function sets up the block and grid dimensions based on the input matrix dimensions. The wrapper function uses a for-loop to iterate over the right-looking algorithm. On each iteration, the four kernels are called sequentially. Each iteration processes the remaining trailing submatrix from the previous iteration. The for-loop iterates until $\mathbf{L}$ and $\mathbf{U}$ have both been calculated. Just as in the naive implementation, $\mathbf{L}$ and $\mathbf{U}$ are both stored in the same output array "out".
 
 \subsection{Block Cyclic with Shared Memory Tiling}
-Tiling reduces global memory accesses.
+This optimization adds shared memory tiling to the previously described block-cyclic mapping approach. Each of the 4 previously described kernels are modified to utilize shared memory. In each kernel, each thread loads some of the elements of $\mathbf{A}$, $\mathbf{L}$, and $\mathbf{U}$ needed for its calculations and stores it in a shared memory array. The loading into shared memory is performed before the main calculations. Each thread collaboratively loads a small portion of the required elements into shared memory so that the entire thread block can access the shared memory array. Each thread in a thread block can then read the elements it needs from shared memory instead of global memory. This reduces global memory accesses and thus reduces bottlenecks associated with multiple threads attempting to access global memory simultaneously.
 
 \section{Output}
+Output times for various steps of execution for each implementation are shown in the following sub sections. Test input matrices of various sizes were used. The input matrices were square, so the listed size is for both dimensions, i.e. $size\times size$. Test input matrices of size 16, 64, 200, 500, 1000, 2000, and 5000 were used. For each size tested, the same input matrix was used between implementations. Further, since pivoting was not implemented, heavy weighting of the diagonals was ensured when generating the test matrices. This ensures numerical stability during floating point calculations, specifically the division calculation in step 2 of the right-looking algorithm. 
 
 \subsection{Naive Implementation}
 \begin{verbatim}
@@ -316,8 +467,27 @@ Tiling reduces global memory accesses.
 	Verifying results...TEST PASSED
 \end{verbatim}
 
+\subsection{Summary}
+A summary of the execution times for each kernel is shown in Table 1 below.
+\begin{table}[htbp]
+	\centering
+	\caption{Kernel Execution Times (seconds)}
+	\label{tab:academic}
+	\begin{tabular}{lccc}
+		\toprule
+		\textbf{N} & \textbf{Naive (s)} & \textbf{BC (s)} & \textbf{BC Shared Mem. (s)}   \\ \midrule
+		16         & 0.101835           & 0.100952        & 0.101178 \\
+		64         & 0.101291           & 0.100843        & 0.100756 \\
+		200        & 0.102618           & 0.101611        & 0.101196 \\
+		500        & 0.105834           & 0.104408        & 0.103023 \\
+		1000       & 0.113392           & 0.116745        & 0.111351 \\
+		2000       & 0.148341           & 0.208327        & 0.168336 \\
+		5000       & 0.599423           & 2.040773        & 0.948372 \\ \bottomrule
+	\end{tabular}
+\end{table}
+
 \section{Analysis}
-Naive implementation was the worst.
+Starting with a comparison between the naive and block-cyclic implementations, it can be seen from Table 1 above that for test matrix sizes 64 through 500, the block-cyclic implementation had faster execution times than the naive implementation. However, for smaller input size 16, and the larger input sizes of 1000 and above, the naive implementation had faster execution time than the block-cyclic implementation.
 
 \section{Conclusion}
 This was a decent project.
@@ -325,6 +495,8 @@ This was a decent project.
 \section{References}
 \begin{enumerate}
 	\item https://courses.grainger.illinois.edu/cs357/sp2020/notes/ref-9-linsys.html
+	\item https://www.netlib.org/utk/papers/outofcore/paper.html
+	\item https://solomonik.cs.illinois.edu/teaching/cs554\textunderscore fall2017/slides/slides\textup 06.pdf
 \end{enumerate}
 	
 \end{document}
