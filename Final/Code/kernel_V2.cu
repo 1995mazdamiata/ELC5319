@@ -8,8 +8,8 @@
 
 
 #define TILE 16
-#define PGRID_R 4
-#define PGRID_C 4
+#define PGRID_R 8
+#define PGRID_C 8
 
 /**
  * luDiagBlockKernel
